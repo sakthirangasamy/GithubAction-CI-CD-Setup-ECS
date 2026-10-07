@@ -48,18 +48,11 @@ jobs:
             -Dsonar.projectKey=sakthirangasamy_GithubAction-CI-CD-Setup-ECS
 
       - name: OWASP Dependency-Check
-        uses: dependency-check/Dependency-Check_Action@main
-        with:
-          project: "Spring Boot CI-CD ECS"
-          path: "."
-          format: "HTML"
-          out: "dependency-check-report"
-          args: >
-            --scan .
-            --failOnCVSS 7
+        run: |
+          ./mvnw dependency-check:check
 
       - name: Upload Dependency-Check Report
         uses: actions/upload-artifact@v4
         with:
           name: dependency-check-report
-          path: dependency-check-report
+          path: target/dependency-check-report
