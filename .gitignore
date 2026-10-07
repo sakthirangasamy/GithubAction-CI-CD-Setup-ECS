@@ -1,0 +1,15 @@
+target/
+.env
+*.log
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.mvn/wrapper/maven-wrapper.jar
+HELP.md
+.classpath
+.project
+.settings/
+.factorypath
+.sts4-cache/
