@@ -11,11 +11,9 @@ on:
 
 jobs:
   build-test:
-
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout source code
         uses: actions/checkout@v4
 
@@ -37,3 +35,13 @@ jobs:
         with:
           name: spring-boot-application
           path: target/*.jar
+
+      - name: SonarCloud Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.c89e435c094ead211093b1cf1098ac5878ac8fd8 }}
+        run: |
+          ./mvnw clean verify sonar:sonar \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.organization=sakthirangasamy \
+            -Dsonar.projectKey=sakthirangasamy_GithubAction-CI-CD-Setup-ECS \
+            -Dsonar.token=$SONAR_TOKEN
