@@ -47,11 +47,7 @@ jobs:
             -Dsonar.organization=sakthirangasamy
             -Dsonar.projectKey=sakthirangasamy_GithubAction-CI-CD-Setup-ECS
 
-      - name: Gitleaks Secret Scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      # Dependency-Check temporarily disabled
       # - name: OWASP Dependency-Check
       #   run: |
       #     ./mvnw dependency-check:check
@@ -61,3 +57,12 @@ jobs:
       #   with:
       #     name: dependency-check-report
       #     path: target/dependency-check-report
+
+      - name: Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker Image
+        run: |
+          docker build -t springboot-mysql-thymeleaf-devsecops:latest .
