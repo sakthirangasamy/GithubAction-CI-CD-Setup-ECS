@@ -21,7 +21,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
           cache: maven
 
       - name: Make Maven Wrapper executable
@@ -38,10 +38,27 @@ jobs:
 
       - name: SonarCloud Scan
         env:
-          SONAR_TOKEN: ${{ secrets.c89e435c094ead211093b1cf1098ac5878ac8fd8 }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           ./mvnw clean verify sonar:sonar \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.organization=sakthirangasamy \
             -Dsonar.projectKey=sakthirangasamy_GithubAction-CI-CD-Setup-ECS \
             -Dsonar.token=$SONAR_TOKEN
+
+      - name: OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "Spring Boot CI-CD ECS"
+          path: "."
+          format: "HTML"
+          out: "dependency-check-report"
+          args: >
+            --scan .
+            --failOnCVSS 7
+
+      - name: Upload Dependency-Check Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: dependency-check-report
