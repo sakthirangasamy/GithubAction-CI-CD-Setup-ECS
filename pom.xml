@@ -96,7 +96,18 @@
                 <artifactId>sonar-maven-plugin</artifactId>
                 <version>5.5.0.6356</version>
             </plugin>
-
+ <plugin>
+    <groupId>org.owasp</groupId>
+    <artifactId>dependency-check-maven</artifactId>
+    <version>12.1.8</version>
+    <configuration>
+        <failBuildOnCVSS>7</failBuildOnCVSS>
+        <formats>
+            <format>HTML</format>
+        </formats>
+        <outputDirectory>${project.build.directory}/dependency-check-report</outputDirectory>
+    </configuration>
+</plugin>
         </plugins>
     </build>
 
