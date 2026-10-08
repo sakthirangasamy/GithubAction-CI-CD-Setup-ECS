@@ -1,3 +1,4 @@
+
 name: Spring Boot CI
 
 on:
@@ -92,6 +93,17 @@ jobs:
       #   uses: aquasecurity/trivy-action@master
 
       # ==========================================
+      # GitHub Context Diagnostic
+      # ==========================================
+
+      - name: Check GitHub context
+        run: |
+          echo "Repository = $GITHUB_REPOSITORY"
+          echo "Ref = $GITHUB_REF"
+          echo "Event = $GITHUB_EVENT_NAME"
+          echo "SHA = $GITHUB_SHA"
+
+      # ==========================================
       # AWS OIDC - ENABLED
       # ==========================================
 
@@ -137,3 +149,4 @@ jobs:
         run: |
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
