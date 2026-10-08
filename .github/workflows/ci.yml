@@ -1,12 +1,7 @@
-
 name: Spring Boot CI
 
 on:
   push:
-    branches:
-      - main
-
-  pull_request:
     branches:
       - main
 
@@ -30,8 +25,7 @@ jobs:
           fetch-depth: 0
 
       # ==========================================
-      # Java
-      # Temporarily disabled
+      # Java - DISABLED
       # ==========================================
 
       # - name: Setup Java 21
@@ -45,16 +39,14 @@ jobs:
       #   run: chmod +x mvnw
 
       # ==========================================
-      # Maven Build & Test
-      # Temporarily disabled
+      # Maven Build & Test - DISABLED
       # ==========================================
 
       # - name: Build and Test
       #   run: ./mvnw clean verify
 
       # ==========================================
-      # Upload JAR
-      # Temporarily disabled
+      # Upload JAR - DISABLED
       # ==========================================
 
       # - name: Upload JAR
@@ -64,47 +56,28 @@ jobs:
       #     path: target/*.jar
 
       # ==========================================
-      # SonarQube
-      # Temporarily disabled
+      # SonarQube - DISABLED
       # ==========================================
 
       # - name: SonarQube Scan
       #   uses: SonarSource/sonarqube-scan-action@v8
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   with:
-      #     args: >
-      #       -Dsonar.organization=sakthirangasamy
-      #       -Dsonar.projectKey=sakthirangasamy_GithubAction-CI-CD-Setup-ECS
 
       # ==========================================
-      # OWASP Dependency-Check
-      # Temporarily disabled
+      # OWASP Dependency-Check - DISABLED
       # ==========================================
 
       # - name: OWASP Dependency-Check
-      #   run: |
-      #     ./mvnw dependency-check:check
-
-      # - name: Upload Dependency-Check Report
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: dependency-check-report
-      #     path: target/dependency-check-report
+      #   run: ./mvnw dependency-check:check
 
       # ==========================================
-      # Gitleaks
-      # Temporarily disabled
+      # Gitleaks - DISABLED
       # ==========================================
 
       # - name: Gitleaks Secret Scan
       #   uses: gitleaks/gitleaks-action@v2
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ==========================================
-      # Docker Build
-      # ENABLED
+      # Docker Build - ENABLED
       # ==========================================
 
       - name: Build Docker Image
@@ -112,22 +85,14 @@ jobs:
           docker build -t springboot-mysql-thymeleaf-devsecops:latest .
 
       # ==========================================
-      # Trivy
-      # Temporarily disabled
+      # Trivy - DISABLED
       # ==========================================
 
       # - name: Trivy Container Scan
       #   uses: aquasecurity/trivy-action@master
-      #   with:
-      #     image-ref: springboot-mysql-thymeleaf-devsecops:latest
-      #     format: table
-      #     exit-code: "0"
-      #     ignore-unfixed: true
-      #     severity: CRITICAL,HIGH
 
       # ==========================================
-      # AWS OIDC
-      # ENABLED
+      # AWS OIDC - ENABLED
       # ==========================================
 
       - name: Configure AWS credentials
@@ -137,8 +102,7 @@ jobs:
           aws-region: ap-south-1
 
       # ==========================================
-      # ECR Login
-      # ENABLED
+      # ECR Login - ENABLED
       # ==========================================
 
       - name: Login to Amazon ECR
@@ -146,8 +110,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       # ==========================================
-      # Docker Tag
-      # ENABLED
+      # Docker Tag - ENABLED
       # ==========================================
 
       - name: Tag Docker Image
@@ -163,8 +126,7 @@ jobs:
             $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       # ==========================================
-      # Push Docker Image to ECR
-      # ENABLED
+      # ECR Push - ENABLED
       # ==========================================
 
       - name: Push Docker Image to ECR
@@ -175,4 +137,3 @@ jobs:
         run: |
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
