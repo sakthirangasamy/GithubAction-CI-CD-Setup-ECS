@@ -1,5 +1,5 @@
 
-name: Spring Boot CI/CD
+name: Spring Boot CI/CD - ECR ECS
 
 on:
   push:
@@ -12,18 +12,31 @@ permissions:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: springboot-mysql-thymeleaf-devsecops
+  ECS_CLUSTER: springboot-ecs-cluster
+  ECS_SERVICE: springboot-ecs-service
+  ECS_TASK_FAMILY: springboot-mysql-task
+  CONTAINER_NAME: springboot-app
+  CONTAINER_PORT: 8080
 
 jobs:
-  build-and-push:
+  build-and-deploy:
+
     runs-on: ubuntu-latest
 
     steps:
 
-      # 1. Checkout source code
+      # --------------------------------------------------
+      # 1. Checkout
+      # --------------------------------------------------
+
       - name: Checkout source code
         uses: actions/checkout@v4
 
+
+      # --------------------------------------------------
       # 2. Setup Java
+      # --------------------------------------------------
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -31,13 +44,21 @@ jobs:
           java-version: '21'
           cache: maven
 
-      # 3. Build Spring Boot JAR
+
+      # --------------------------------------------------
+      # 3. Build JAR
+      # --------------------------------------------------
+
       - name: Build JAR
         run: |
           chmod +x mvnw
           ./mvnw clean package -DskipTests
 
-      # 4. Configure AWS credentials
+
+      # --------------------------------------------------
+      # 4. Configure AWS
+      # --------------------------------------------------
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -45,7 +66,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 5. Create ECR repository if it does not exist
+
+      # --------------------------------------------------
+      # 5. Create ECR repository if not exists
+      # --------------------------------------------------
+
       - name: Create ECR repository if not exists
         run: |
           aws ecr describe-repositories \
@@ -55,12 +80,20 @@ jobs:
             --repository-name "$ECR_REPOSITORY" \
             --region "$AWS_REGION"
 
-      # 6. Login to Amazon ECR
+
+      # --------------------------------------------------
+      # 6. Login to ECR
+      # --------------------------------------------------
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+
+      # --------------------------------------------------
       # 7. Build Docker image
+      # --------------------------------------------------
+
       - name: Build Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -70,11 +103,293 @@ jobs:
             -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
             .
 
-      # 8. Push Docker image to ECR
+
+      # --------------------------------------------------
+      # 8. Push Docker image
+      # --------------------------------------------------
+
       - name: Push Docker image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}"
           docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+
+      # --------------------------------------------------
+      # 9. Check ECS cluster
+      # --------------------------------------------------
+
+      - name: Create ECS cluster if not exists
+        run: |
+          CLUSTER_STATUS=$(aws ecs describe-clusters \
+            --clusters "$ECS_CLUSTER" \
+            --query "clusters[0].status" \
+            --output text 2>/dev/null || true)
+
+          if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
+            echo "ECS cluster does not exist."
+            echo "Creating ECS cluster..."
+
+            aws ecs create-cluster \
+              --cluster-name "$ECS_CLUSTER"
+
+          else
+            echo "ECS cluster already exists."
+          fi
+
+
+      # --------------------------------------------------
+      # 10. Get Default VPC
+      # --------------------------------------------------
+
+      - name: Get default VPC
+        id: vpc
+        run: |
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters Name=isDefault,Values=true \
+            --query "Vpcs[0].VpcId" \
+            --output text)
+
+          echo "VPC_ID=$VPC_ID" >> "$GITHUB_OUTPUT"
+
+          echo "Default VPC: $VPC_ID"
+
+
+      # --------------------------------------------------
+      # 11. Get Subnets
+      # --------------------------------------------------
+
+      - name: Get default subnets
+        id: subnet
+        run: |
+          SUBNETS=$(aws ec2 describe-subnets \
+            --filters \
+              Name=vpc-id,Values=${{ steps.vpc.outputs.VPC_ID }} \
+            --query "Subnets[*].SubnetId" \
+            --output text)
+
+          SUBNET1=$(echo "$SUBNETS" | awk '{print $1}')
+          SUBNET2=$(echo "$SUBNETS" | awk '{print $2}')
+
+          echo "SUBNET1=$SUBNET1" >> "$GITHUB_OUTPUT"
+          echo "SUBNET2=$SUBNET2" >> "$GITHUB_OUTPUT"
+
+          echo "Subnet 1: $SUBNET1"
+          echo "Subnet 2: $SUBNET2"
+
+
+      # --------------------------------------------------
+      # 12. Create ECS Security Group if not exists
+      # --------------------------------------------------
+
+      - name: Create ECS security group if not exists
+        id: sg
+        run: |
+
+          VPC_ID=${{ steps.vpc.outputs.VPC_ID }}
+
+          SG_ID=$(aws ec2 describe-security-groups \
+            --filters \
+              Name=group-name,Values=springboot-ecs-sg \
+              Name=vpc-id,Values=$VPC_ID \
+            --query "SecurityGroups[0].GroupId" \
+            --output text)
+
+          if [ "$SG_ID" = "None" ] || [ -z "$SG_ID" ]; then
+
+            echo "Creating security group..."
+
+            SG_ID=$(aws ec2 create-security-group \
+              --group-name springboot-ecs-sg \
+              --description "Spring Boot ECS security group" \
+              --vpc-id "$VPC_ID" \
+              --query "GroupId" \
+              --output text)
+
+            echo "Created SG: $SG_ID"
+
+            aws ec2 authorize-security-group-ingress \
+              --group-id "$SG_ID" \
+              --protocol tcp \
+              --port 8080 \
+              --cidr 0.0.0.0/0
+
+          else
+
+            echo "Security group already exists: $SG_ID"
+
+          fi
+
+          echo "SG_ID=$SG_ID" >> "$GITHUB_OUTPUT"
+
+
+      # --------------------------------------------------
+      # 13. Create ECS Task Execution Role if needed
+      # --------------------------------------------------
+
+      - name: Create ECS execution role if not exists
+        id: role
+        run: |
+
+          ROLE_NAME=springboot-ecs-task-execution-role
+
+          ROLE_EXISTS=$(aws iam get-role \
+            --role-name "$ROLE_NAME" \
+            --query "Role.Arn" \
+            --output text 2>/dev/null || true)
+
+          if [ -z "$ROLE_EXISTS" ]; then
+
+            echo "Creating ECS execution role..."
+
+            cat > trust-policy.json <<'EOF'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "ecs-tasks.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+          EOF
+
+            aws iam create-role \
+              --role-name "$ROLE_NAME" \
+              --assume-role-policy-document file://trust-policy.json
+
+            aws iam attach-role-policy \
+              --role-name "$ROLE_NAME" \
+              --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+            ROLE_ARN=$(aws iam get-role \
+              --role-name "$ROLE_NAME" \
+              --query "Role.Arn" \
+              --output text)
+
+          else
+
+            ROLE_ARN="$ROLE_EXISTS"
+
+            echo "Execution role already exists."
+
+          fi
+
+          echo "ROLE_ARN=$ROLE_ARN" >> "$GITHUB_OUTPUT"
+
+
+      # --------------------------------------------------
+      # 14. Create / Update ECS Task Definition
+      # --------------------------------------------------
+
+      - name: Register ECS task definition
+        id: task
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ROLE_ARN: ${{ steps.role.outputs.ROLE_ARN }}
+        run: |
+
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}"
+
+          cat > task-definition.json <<EOF
+          {
+            "family": "$ECS_TASK_FAMILY",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": [
+              "FARGATE"
+            ],
+            "cpu": "512",
+            "memory": "1024",
+            "executionRoleArn": "$ROLE_ARN",
+            "containerDefinitions": [
+              {
+                "name": "$CONTAINER_NAME",
+                "image": "$IMAGE",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition.json \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)
+
+          echo "TASK_DEFINITION_ARN=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+
+      # --------------------------------------------------
+      # 15. Check ECS Service
+      # --------------------------------------------------
+
+      - name: Check ECS service
+        id: service
+        run: |
+
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query "services[0].status" \
+            --output text 2>/dev/null || true)
+
+          echo "SERVICE_STATUS=$SERVICE_STATUS" >> "$GITHUB_OUTPUT"
+
+          echo "Service status: $SERVICE_STATUS"
+
+
+      # --------------------------------------------------
+      # 16. Create ECS Service if not exists
+      # --------------------------------------------------
+
+      - name: Create ECS service if not exists
+        if: steps.service.outputs.SERVICE_STATUS != 'ACTIVE'
+        run: |
+
+          aws ecs create-service \
+            --cluster "$ECS_CLUSTER" \
+            --service-name "$ECS_SERVICE" \
+            --task-definition "${{ steps.task.outputs.TASK_DEFINITION_ARN }}" \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration \
+              "awsvpcConfiguration={subnets=[${{ steps.subnet.outputs.SUBNET1 }},${{ steps.subnet.outputs.SUBNET2 }}],securityGroups=[${{ steps.sg.outputs.SG_ID }}],assignPublicIp=ENABLED}"
+
+      # --------------------------------------------------
+      # 17. Update ECS service if already exists
+      # --------------------------------------------------
+
+      - name: Update ECS service
+        if: steps.service.outputs.SERVICE_STATUS == 'ACTIVE'
+        run: |
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.task.outputs.TASK_DEFINITION_ARN }}" \
+            --force-new-deployment
+
+      # --------------------------------------------------
+      # 18. Wait for deployment
+      # --------------------------------------------------
+
+      - name: Wait for ECS deployment
+        run: |
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+          echo "ECS deployment completed successfully."
 
