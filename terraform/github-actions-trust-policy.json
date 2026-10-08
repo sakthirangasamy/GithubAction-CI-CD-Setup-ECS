@@ -12,7 +12,7 @@
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:sakthirangasamy/GithubAction-CI-CD-Setup-ECS:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": "repo:sakthirangasamy/GithubAction-CI-CD-Setup-ECS:*"
         }
       }
     }
