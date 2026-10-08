@@ -1,3 +1,4 @@
+
 name: Spring Boot CI/CD
 
 on:
@@ -18,9 +19,11 @@ jobs:
 
     steps:
 
+      # 1. Checkout source code
       - name: Checkout source code
         uses: actions/checkout@v4
 
+      # 2. Setup Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -28,11 +31,13 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # 3. Build Spring Boot JAR
       - name: Build JAR
         run: |
           chmod +x mvnw
           ./mvnw clean package -DskipTests
 
+      # 4. Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -40,22 +45,36 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # 5. Create ECR repository if it does not exist
+      - name: Create ECR repository if not exists
+        run: |
+          aws ecr describe-repositories \
+            --repository-names "$ECR_REPOSITORY" \
+            --region "$AWS_REGION" \
+          || aws ecr create-repository \
+            --repository-name "$ECR_REPOSITORY" \
+            --region "$AWS_REGION"
+
+      # 6. Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # 7. Build Docker image
       - name: Build Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           docker build \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }} \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}" \
+            -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" \
             .
 
+      # 8. Push Docker image to ECR
       - name: Push Docker image to ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
